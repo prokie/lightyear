@@ -59,7 +59,7 @@ Let's define our component protocol:
 ```rust
 /// A component that will identify which player the box belongs to
 #[derive(Component, Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct PlayerId(ClientId);
+pub struct PlayerId(PeerId);
 
 /// A component that will store the position of the box. We could also directly use the `Transform` component.
 #[derive(Component, Serialize, Deserialize, Clone, Debug, PartialEq, Reflect, Deref, DerefMut)]
@@ -75,7 +75,10 @@ impl Plugin for ProtocolPlugin{
     fn build(&self, app: &mut App) {
         app.component::<PlayerId>().replicate();
 
-        app.component::<PlayerPosition>().replicate();
+        app.component::<PlayerPosition>()
+            .replicate()
+            .predict()
+            .add_linear_interpolation();
 
         app.component::<PlayerColor>().replicate();
     }
@@ -94,12 +97,9 @@ Let's define our message protocol:
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Message1(pub usize);
 
-impl Plugin for ProtocolPlugin{
-  fn build(&self, app: &mut App) {
-    app.register_message::<Message1>()
-      .add_direction(NetworkDirection::ServerToClient);
-  }
-}
+// Add this to the existing `ProtocolPlugin::build` method:
+app.register_message::<Message1>()
+    .add_direction(NetworkDirection::ServerToClient);
 ```
 
 ### Inputs
@@ -112,7 +112,7 @@ Let's define our inputs:
 
 ```rust
 /// The different directions that the player can move the box
-#[derive(Serialize, Deserialize, Debug, Default, PartialEq, Eq, Clone)]
+#[derive(Serialize, Deserialize, Debug, Default, PartialEq, Eq, Clone, Reflect)]
 pub struct Direction {
     pub(crate) up: bool,
     pub(crate) down: bool,
@@ -136,11 +136,8 @@ impl MapEntities for Inputs {
     fn map_entities<M: EntityMapper>(&mut self, entity_mapper: &mut M) {}
 }
 
-impl Plugin for ProtocolPlugin{
-  fn build(&self, app: &mut App) {
-    app.add_plugins(input::native::InputPlugin::<Inputs>::default());
-  }
-}
+// Add this to the existing `ProtocolPlugin::build` method:
+app.add_plugins(input::native::InputPlugin::<Inputs>::default());
 ```
 
 ### Channels
@@ -158,21 +155,17 @@ A `Channel` defines some properties of how messages will be sent over the networ
 ```rust
 pub struct Channel1;
 
-pub(crate) struct ProtocolPlugin;
-
-impl Plugin for ProtocolPlugin {
-    fn build(&self, app: &mut App) {
-        app.add_channel::<Channel1>(ChannelSettings {
-          mode: ChannelMode::OrderedReliable(ReliableSettings::default()),
-          ..default()
-        })
-        // this will automatically add the ChannelReceiver/ChannelSender on Client/Server entities        
-        .add_direction(NetworkDirection::ServerToClient);
-    }
-}
+// Add this to the existing `ProtocolPlugin::build` method:
+app.add_channel::<Channel1>(ChannelSettings {
+    mode: ChannelMode::OrderedReliable(ReliableSettings::default()),
+    ..default()
+})
+// This automatically adds the ChannelReceiver/ChannelSender components to
+// client/server entities.
+.add_direction(NetworkDirection::ServerToClient);
 ```
 
-We create a channel by simply deriving the `Channel` trait on an empty struct.
+An empty struct acts as the channel marker type.
 
 ## Summary
 
